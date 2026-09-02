@@ -1,0 +1,31 @@
+# Render 部署配置文件
+# 将此文件放在仓库根目录，Render 会自动识别配置
+
+services:
+  - type: web
+    name: suijijun-backend
+    runtime: node
+    plan: free # 可改为 starter 或 pro
+    buildCommand: npm install
+    startCommand: node src/index.js
+    envVars:
+      - key: NODE_VERSION
+        value: 20.11.1
+      - key: JWT_SECRET
+        generateValue: true # Render 会自动生成一个随机密钥
+      - key: ADMIN_USERNAME
+        value: admin1
+      - key: ADMIN_PASSWORD
+        value: admin123 # 建议部署后修改
+    # 如需使用 PostgreSQL（推荐，数据持久化），取消下面的注释
+    # disk:
+    #   name: data
+    #   mountPath: /opt/render/project/src/data
+    #   sizeGB: 1
+
+# 如需使用 Render PostgreSQL，取消下面的注释并在环境变量中添加 DATABASE_URL
+# databases:
+#   - name: suijijun-db
+#     plan: free
+#     databaseName: suijijun
+#     user: suijijun

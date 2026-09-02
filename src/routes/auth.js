@@ -35,7 +35,7 @@ router.post('/login', async (req, res) => {
 
     // 更新最后登录时间
     await db.run(
-      'UPDATE users SET last_login_at = datetime(\'now\') WHERE id = ?',
+      'UPDATE users SET last_login_at = NOW() WHERE id = ?',
       [user.id]
     );
 

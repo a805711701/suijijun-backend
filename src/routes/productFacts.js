@@ -39,14 +39,14 @@ router.put('/', authRequired, async (req, res) => {
 
     if (existing) {
       await db.run(
-        'UPDATE product_facts SET content = ?, updated_at = datetime(\'now\') WHERE id = ?',
+        'UPDATE product_facts SET content = ?, updated_at = NOW() WHERE id = ?',
         [content, existing.id]
       );
       const updated = await db.get('SELECT * FROM product_facts WHERE id = ?', [existing.id]);
       res.json({ product_facts: updated });
     } else {
       const result = await db.run(
-        'INSERT INTO product_facts (content, updated_at) VALUES (?, datetime(\'now\'))',
+        'INSERT INTO product_facts (content, updated_at) VALUES (?, NOW())',
         [content]
       );
       const newRecord = await db.get('SELECT * FROM product_facts WHERE id = ?', [result.lastInsertRowid]);

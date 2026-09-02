@@ -1,55 +1,37 @@
-// 数据库抽象层：自动检测 DATABASE_URL 环境变量
-// 有 DATABASE_URL → PostgreSQL，无 → SQLite（本地开发/简单部署）
+// 数据库层：PostgreSQL
+// 需要配置环境变量 DATABASE_URL 才能连接数据库
 
-const path = require('path');
-const fs = require('fs');
+const { Pool } = require('pg');
 
-let db;
-let dbType = 'sqlite';
+let pool;
+let dbType = 'postgresql';
 
-// 通用查询接口，统一异步 API
+// 通用查询接口
 const dbInterface = {
   // 执行查询，返回所有行
   async query(sql, params = []) {
-    if (dbType === 'sqlite') {
-      const stmt = db.prepare(convertSqlPlaceholders(sql, 'sqlite'));
-      return stmt.all(...params);
-    } else {
-      const result = await db.query(convertSqlPlaceholders(sql, 'pg'), params);
-      return result.rows;
-    }
+    const result = await pool.query(convertSqlPlaceholders(sql), params);
+    return result.rows;
   },
 
   // 执行查询，返回第一行
   async get(sql, params = []) {
-    if (dbType === 'sqlite') {
-      const stmt = db.prepare(convertSqlPlaceholders(sql, 'sqlite'));
-      return stmt.get(...params);
-    } else {
-      const result = await db.query(convertSqlPlaceholders(sql, 'pg'), params);
-      return result.rows[0] || null;
-    }
+    const result = await pool.query(convertSqlPlaceholders(sql), params);
+    return result.rows[0] || null;
   },
 
-  // 执行写入（INSERT/UPDATE/DELETE），返回变更信息
+  // 执行写入（INSERT/UPDATE/DELETE）
   async run(sql, params = []) {
-    if (dbType === 'sqlite') {
-      const stmt = db.prepare(convertSqlPlaceholders(sql, 'sqlite'));
-      const result = stmt.run(...params);
-      return { lastInsertRowid: result.lastInsertRowid, changes: result.changes };
-    } else {
-      const result = await db.query(convertSqlPlaceholders(sql, 'pg'), params);
-      return { lastInsertRowid: result.rows[0]?.id, changes: result.rowCount };
-    }
+    const result = await pool.query(convertSqlPlaceholders(sql), params);
+    return {
+      lastInsertRowid: result.rows[0]?.id,
+      changes: result.rowCount
+    };
   },
 
   // 执行多条SQL（建表用）
   async exec(sql) {
-    if (dbType === 'sqlite') {
-      db.exec(sql);
-    } else {
-      await db.query(sql);
-    }
+    await pool.query(sql);
   },
 
   getType() {
@@ -57,12 +39,8 @@ const dbInterface = {
   }
 };
 
-// 将 ? 占位符转换为对应数据库的格式
-function convertSqlPlaceholders(sql, target) {
-  if (target === 'sqlite') {
-    return sql; // SQLite 原生支持 ?
-  }
-  // PostgreSQL: 将 ? 转换为 $1, $2, ...
+// 将 ? 占位符转换为 PostgreSQL 的 $1, $2, ...
+function convertSqlPlaceholders(sql) {
   let count = 0;
   return sql.replace(/\?/g, () => {
     count++;
@@ -74,24 +52,29 @@ function convertSqlPlaceholders(sql, target) {
 async function initDB() {
   const databaseUrl = process.env.DATABASE_URL;
 
-  if (databaseUrl) {
-    // PostgreSQL 模式
-    console.log('[DB] 使用 PostgreSQL 数据库');
-    const { Pool } = require('pg');
-    db = new Pool({ connectionString: databaseUrl });
-    dbType = 'pg';
-  } else {
-    // SQLite 模式
-    console.log('[DB] 使用 SQLite 数据库');
-    const Database = require('better-sqlite3');
-    const dataDir = path.join(__dirname, '..', 'data');
-    if (!fs.existsSync(dataDir)) {
-      fs.mkdirSync(dataDir, { recursive: true });
+  if (!databaseUrl) {
+    console.error('[DB] 错误：未配置 DATABASE_URL 环境变量');
+    console.error('[DB] 请在 Render 环境变量中添加 DATABASE_URL');
+    throw new Error('DATABASE_URL is not configured');
+  }
+
+  console.log('[DB] 使用 PostgreSQL 数据库');
+
+  pool = new Pool({
+    connectionString: databaseUrl,
+    ssl: {
+      rejectUnauthorized: false // Render PostgreSQL 需要 SSL
     }
-    const dbPath = path.join(dataDir, 'app.db');
-    db = new Database(dbPath);
-    db.pragma('journal_mode = WAL');
-    dbType = 'sqlite';
+  });
+
+  // 测试连接
+  try {
+    const client = await pool.connect();
+    console.log('[DB] 数据库连接成功');
+    client.release();
+  } catch (err) {
+    console.error('[DB] 数据库连接失败:', err.message);
+    throw err;
   }
 
   await createTables();
@@ -105,42 +88,40 @@ async function initDB() {
 async function createTables() {
   const sql = `
     CREATE TABLE IF NOT EXISTS users (
-      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      id SERIAL PRIMARY KEY,
       username TEXT UNIQUE NOT NULL,
       password TEXT NOT NULL,
       role TEXT DEFAULT 'member',
       status TEXT DEFAULT 'active',
-      created_at TEXT DEFAULT (datetime('now')),
-      last_login_at TEXT
+      created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+      last_login_at TIMESTAMP
     );
 
     CREATE TABLE IF NOT EXISTS generations (
-      id INTEGER PRIMARY KEY AUTOINCREMENT,
-      user_id INTEGER,
+      id SERIAL PRIMARY KEY,
+      user_id INTEGER REFERENCES users(id),
       mode TEXT NOT NULL,
       task_type TEXT,
       input_content TEXT,
       output_content TEXT,
       title TEXT,
-      created_at TEXT DEFAULT (datetime('now')),
-      FOREIGN KEY (user_id) REFERENCES users(id)
+      created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
     );
 
     CREATE TABLE IF NOT EXISTS materials (
-      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      id SERIAL PRIMARY KEY,
       category TEXT NOT NULL,
       title TEXT,
       content TEXT,
       source TEXT,
-      created_by INTEGER,
-      created_at TEXT DEFAULT (datetime('now')),
-      FOREIGN KEY (created_by) REFERENCES users(id)
+      created_by INTEGER REFERENCES users(id),
+      created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
     );
 
     CREATE TABLE IF NOT EXISTS product_facts (
-      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      id SERIAL PRIMARY KEY,
       content TEXT,
-      updated_at TEXT DEFAULT (datetime('now'))
+      updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
     );
 
     CREATE INDEX IF NOT EXISTS idx_generations_user ON generations(user_id);
@@ -160,14 +141,14 @@ async function seedDefaultData() {
   const adminPassword = process.env.ADMIN_PASSWORD || 'admin123';
 
   const existingAdmin = await dbInterface.get(
-    'SELECT id FROM users WHERE username = ?',
+    'SELECT id FROM users WHERE username = $1',
     [adminUsername]
   );
 
   if (!existingAdmin) {
     const hashedPassword = await bcrypt.hash(adminPassword, 10);
     await dbInterface.run(
-      'INSERT INTO users (username, password, role, status) VALUES (?, ?, ?, ?)',
+      'INSERT INTO users (username, password, role, status) VALUES ($1, $2, $3, $4)',
       [adminUsername, hashedPassword, 'admin', 'active']
     );
     console.log(`[DB] 已创建默认管理员: ${adminUsername}/${adminPassword}`);
@@ -176,19 +157,19 @@ async function seedDefaultData() {
   // 默认产品事实（空记录）
   const productFact = await dbInterface.get('SELECT id FROM product_facts LIMIT 1');
   if (!productFact) {
-    await dbInterface.run('INSERT INTO product_facts (content) VALUES (?)', ['']);
+    await dbInterface.run('INSERT INTO product_facts (content) VALUES ($1)', ['']);
   }
 
   // 默认素材库分类
   const defaultCategories = ['真实用户评论', '爆文案例', '搜索词数据'];
   for (const category of defaultCategories) {
     const existing = await dbInterface.get(
-      'SELECT id FROM materials WHERE category = ? LIMIT 1',
+      'SELECT id FROM materials WHERE category = $1 LIMIT 1',
       [category]
     );
     if (!existing) {
       await dbInterface.run(
-        'INSERT INTO materials (category, title, content, source) VALUES (?, ?, ?, ?)',
+        'INSERT INTO materials (category, title, content, source) VALUES ($1, $2, $3, $4)',
         [category, '默认分类', '', 'system']
       );
     }

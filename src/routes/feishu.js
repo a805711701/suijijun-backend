@@ -2,7 +2,7 @@
 const express = require('express');
 const router = express.Router();
 const { db } = require('../db');
-const auth = require('../middleware/auth');
+const { authRequired } = require('../middleware/auth');
 
 // 飞书配置（从环境变量读取）
 const FEISHU_APP_ID = process.env.FEISHU_APP_ID;
@@ -197,7 +197,7 @@ async function syncTable(token, tableConfig, userId) {
 }
 
 // POST /api/feishu/sync - 手动触发飞书同步
-router.post('/sync', auth, async (req, res) => {
+router.post('/sync', authRequired, async (req, res) => {
   try {
     if (!FEISHU_APP_ID || !FEISHU_APP_SECRET) {
       return res.status(400).json({ error: '飞书应用未配置，请在环境变量中设置 FEISHU_APP_ID 和 FEISHU_APP_SECRET' });
@@ -233,7 +233,7 @@ router.post('/sync', auth, async (req, res) => {
 });
 
 // GET /api/feishu/status - 获取飞书同步状态
-router.get('/status', auth, async (req, res) => {
+router.get('/status', authRequired, async (req, res) => {
   try {
     // 统计各分类的素材数量
     const stats = await db.query(

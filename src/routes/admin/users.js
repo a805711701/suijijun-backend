@@ -28,12 +28,21 @@ router.get('/', async (req, res) => {
     }
 
     const users = await db.query(
-      `SELECT id, username, role, status, created_at, last_login_at 
-       FROM users${whereClause} 
+      `SELECT u.id, u.username, u.role, u.status, u.created_at, u.last_login_at,
+              (SELECT COUNT(*) FROM generations g WHERE g.user_id = u.id) as generation_count,
+              (SELECT MAX(created_at) FROM generations g WHERE g.user_id = u.id) as last_generation_at
+       FROM users u${whereClause} 
        ORDER BY created_at DESC 
        LIMIT ? OFFSET ?`,
       [...params, parseInt(pageSize), offset]
     );
+
+    // 计算最后活跃时间（取最后登录和最后生成的较大值）
+    for (const u of users) {
+      const loginTime = u.last_login_at ? new Date(u.last_login_at).getTime() : 0;
+      const genTime = u.last_generation_at ? new Date(u.last_generation_at).getTime() : 0;
+      u.last_active_at = loginTime >= genTime ? u.last_login_at : u.last_generation_at;
+    }
 
     const countResult = await db.get(
       `SELECT COUNT(*) as count FROM users${whereClause}`,

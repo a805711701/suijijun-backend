@@ -171,8 +171,23 @@ async function syncTable(token, tableConfig, userId) {
       continue;
     }
 
+    // 检查空白字段：标题和所有内容字段都为空时跳过
+    const titleValue = extractFieldValue(fields[tableConfig.titleField]);
+    let hasContent = false;
+    for (const fieldName of tableConfig.contentFields) {
+      const value = extractFieldValue(fields[fieldName]);
+      if (value && value.trim()) {
+        hasContent = true;
+        break;
+      }
+    }
+    if ((!titleValue || !titleValue.trim()) && !hasContent) {
+      skipped++;
+      continue;
+    }
+
     // 提取标题
-    let title = extractFieldValue(fields[tableConfig.titleField]);
+    let title = titleValue;
     if (!title || !title.trim()) {
       title = `${tableConfig.name} - ${recordId}`;
     }
@@ -258,3 +273,4 @@ router.get('/status', authRequired, async (req, res) => {
 });
 
 module.exports = router;
+

@@ -32,7 +32,7 @@ router.post('/', authRequired, async (req, res) => {
   }
 });
 
-// 获取生成记录列表（需要登录，管理员看全部，普通成员看自己的）
+// 获取生成记录列表（需要登录，所有团队成员共享可见）
 router.get('/', authRequired, async (req, res) => {
   try {
     const {
@@ -48,11 +48,9 @@ router.get('/', authRequired, async (req, res) => {
     const conditions = [];
     const params = [];
 
-    // 普通成员只能看自己的，管理员可以看全部或指定用户
-    if (req.user.role !== 'admin') {
-      conditions.push('g.user_id = ?');
-      params.push(req.user.id);
-    } else if (user_id) {
+    // 所有登录用户都能看到全部团队生成记录
+    // 可选按 user_id 筛选
+    if (user_id) {
       conditions.push('g.user_id = ?');
       params.push(user_id);
     }
@@ -119,11 +117,7 @@ router.get('/:id', authRequired, async (req, res) => {
       return res.status(404).json({ error: '记录不存在' });
     }
 
-    // 普通成员只能看自己的
-    if (req.user.role !== 'admin' && record.user_id !== req.user.id) {
-      return res.status(403).json({ error: '无权查看此记录' });
-    }
-
+    // 所有团队成员都可以查看生成记录详情
     res.json({ generation: record });
   } catch (err) {
     console.error('[Generations] 获取生成记录详情失败:', err);
@@ -188,3 +182,4 @@ router.post('/check-duplicate', authOptional, async (req, res) => {
 });
 
 module.exports = router;
+

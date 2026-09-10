@@ -22,7 +22,12 @@ const dbInterface = {
 
   // 执行写入（INSERT/UPDATE/DELETE）
   async run(sql, params = []) {
-    const result = await pool.query(convertSqlPlaceholders(sql), params);
+    let finalSql = convertSqlPlaceholders(sql);
+    // PostgreSQL 的 INSERT 默认不返回新行，自动加 RETURNING id 以获取 lastInsertRowid
+    if (/^\s*INSERT\s+/i.test(finalSql) && !/RETURNING/i.test(finalSql)) {
+      finalSql = finalSql.replace(/;\s*$/, '') + ' RETURNING id';
+    }
+    const result = await pool.query(finalSql, params);
     return {
       lastInsertRowid: result.rows[0]?.id,
       changes: result.rowCount

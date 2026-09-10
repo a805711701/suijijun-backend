@@ -10,6 +10,7 @@ const generationRoutes = require('./routes/generations');
 const materialRoutes = require('./routes/materials');
 const productFactRoutes = require('./routes/productFacts');
 const statsRoutes = require('./routes/admin/stats');
+const feishuRoutes = require('./routes/feishu');
 
 const app = express();
 const PORT = process.env.PORT || 3000;
@@ -41,6 +42,7 @@ app.use('/api/generations', generationRoutes);
 app.use('/api/materials', materialRoutes);
 app.use('/api/product-facts', productFactRoutes);
 app.use('/api/admin/stats', statsRoutes);
+app.use('/api/feishu', feishuRoutes);
 
 // 404 处理
 app.use((req, res) => {
